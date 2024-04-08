@@ -60,7 +60,7 @@ export async function getRank(req: Request, res: Response) {
       "leaderboard",
       req.query.player as string
     );
-    if (rank || rank === 0) {
+    if (typeof rank !== "undefined" && rank !== null) {
       const data = {
         rank: rank,
         player: req.query.player,
@@ -86,11 +86,11 @@ export async function getRank(req: Request, res: Response) {
 
       console.log("Rank: ", rank);
 
-      if (!rank && rank !== 0) {
+      if (typeof rank === "undefined" || rank === null) {
         return res.status(404).json({ error: "User not found" });
       }
       const data = {
-        rank,
+        rank: rank,
         player: req.query.player,
         score: req.query.score,
       };
