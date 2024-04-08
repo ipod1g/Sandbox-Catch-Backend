@@ -60,7 +60,7 @@ export async function getRank(req: Request, res: Response) {
       "leaderboard",
       req.query.player as string
     );
-    if (rank) {
+    if (rank || rank === 0) {
       const data = {
         rank: rank,
         player: req.query.player,
@@ -84,7 +84,9 @@ export async function getRank(req: Request, res: Response) {
         req.query.player as string
       );
 
-      if (!rank) {
+      console.log("Rank: ", rank);
+
+      if (!rank && rank !== 0) {
         return res.status(404).json({ error: "User not found" });
       }
       const data = {
