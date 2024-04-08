@@ -51,8 +51,11 @@ export async function insertToLeaderboard(req: Request, res: Response) {
 }
 
 export async function getRank(req: Request, res: Response) {
-  console.log("Getting user rank", req.body);
+  console.log("Getting user rank", req.query.player as string);
   try {
+    if (!req.query.player) {
+      return res.status(400).json({ error: "Player name is required" });
+    }
     const rank = await redisClient.zRevRank(
       "leaderboard",
       req.query.player as string
