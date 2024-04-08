@@ -30,6 +30,7 @@ app.use(
 const limiter = RateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 100,
+  validate: { xForwardedForHeader: false },
 });
 // To all requests
 app.use(limiter);
