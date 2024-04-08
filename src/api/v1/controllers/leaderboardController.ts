@@ -1,37 +1,95 @@
 import db from "../../../db";
-import redisClient from "../../../redis";
+import redisClient, { expirationTime } from "../../../redis";
 import { leaderboard } from "../schema";
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 
-export async function getLeaderBoard(req: Request, res: Response) {
+export async function getLeaderBoard(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   console.log("Getting leaderboard data");
-  const range = Number(req.query.range) || 100;
+  const range = Number(req.query.range) - 1 || 99;
   try {
-    const cache = await redisClient.zRangeWithScores("leaderboard", 0, range, {
-      REV: true,
-    });
+    const sortedSet = await redisClient.zRangeWithScores(
+      "leaderboard",
+      0,
+      range,
+      {
+        REV: true,
+      }
+    );
 
-    if (cache && cache.length > 0) {
-      const data = cache.map((item) => {
-        return {
-          player: item.value,
-          score: item.score,
-        };
-      });
-      return res.status(200).json({ data });
+    if (sortedSet && sortedSet.length > 0) {
+      let leaderboardArr = new Array(sortedSet.length);
+      let fetchedUserCount = 0;
+
+      for (let i = 0; i < sortedSet.length; i++) {
+        const hashData = await redisClient.hmGet("users", sortedSet[i].value);
+        if (hashData) {
+          const details = {
+            rank: i + 1,
+            score: sortedSet[i].score,
+            player: JSON.parse(hashData[0]).player,
+            country: JSON.parse(hashData[0]).country,
+          };
+
+          leaderboardArr[i] = details;
+          fetchedUserCount++;
+
+          if (fetchedUserCount == sortedSet.length) {
+            return res.status(200).json({ data: leaderboardArr });
+          }
+        } else {
+          next(new Error("Failed to retrieve data"));
+        }
+      }
     } else {
-      const data = await db.query.leaderboard.findMany({
+      const dbData = await db.query.leaderboard.findMany({
         orderBy: (user, { desc }) => [desc(user.score)],
-        limit: 100,
+        limit: range,
         columns: {
+          id: true,
           player: true,
           score: true,
         },
       });
-      return res.status(200).json({ data });
+
+      // update sortedSet
+      if (dbData && dbData.length > 0) {
+        const formattedData = dbData.map((item) => {
+          return {
+            score: item.score,
+            value: `userid:${item.id}`,
+          };
+        });
+        await redisClient.zAdd("leaderboard", formattedData);
+        await redisClient.expire("leaderboard", expirationTime);
+
+        const leaderboardArr = dbData.map((item, index) => ({
+          rank: index + 1,
+          score: item.score,
+          player: item.player,
+        }));
+
+        // update hash table
+        dbData.forEach(async (datum) => {
+          await redisClient.hSet(
+            "users",
+            `userid:${datum.id}`,
+            JSON.stringify(datum)
+          );
+          await redisClient.expire("users", expirationTime);
+        });
+
+        return res.status(200).json({ data: leaderboardArr });
+      } else {
+        return res.status(404).json({ error: "No data found" });
+      }
     }
   } catch (error) {
     console.error("Failed to retrieve data:", error);
+    return res.status(500).json({ error });
   }
 }
 
@@ -41,55 +99,71 @@ export async function insertToLeaderboard(req: Request, res: Response) {
     player: req.body.player,
     score: req.body.score,
   };
+
   try {
     const data = await db.insert(leaderboard).values(payload).returning();
+
+    await redisClient.zAdd("leaderboard", {
+      score: data[0].score,
+      value: `userid:${data[0].id}`,
+    });
+    await redisClient.hSet(
+      "users",
+      `userid:${data[0].id}`,
+      JSON.stringify(data[0])
+    );
     return res.status(200).json({ data });
   } catch (error) {
-    console.error("Failed to insert data:", error);
+    console.error("Failed to insert data properly:", error);
     return res.status(500).json({ error });
   }
 }
 
 export async function getRank(req: Request, res: Response) {
-  console.log("Getting user rank", req.query.player as string);
+  if (!req.query.id)
+    return res.status(400).json({ error: "Player id required" });
+
+  const { id } = req.query;
+  console.log("Getting user rank:", id);
 
   try {
-    if (!req.query.player || !req.query.score) {
-      return res.status(400).json({ error: "Player info required" });
-    }
-    const member = JSON.stringify(req.query);
-    const rank = await redisClient.zRevRank("leaderboard", member);
+    const rank = await redisClient.zRevRank(
+      "leaderboard",
+      `userid:${req.query.id}`
+    );
     if (typeof rank !== "undefined" && rank !== null) {
+      // no need to visit hash table
       const data = {
-        rank: rank,
+        rank: rank + 1,
         player: req.query.player,
         score: req.query.score,
       };
       return res.status(200).json({ data });
     } else {
+      // query without limit since we need to find the rank of the user (can be +100)
       const dbData = await db.select().from(leaderboard);
-      const formattedData = dbData.map((item) => {
+      const formattedData = dbData.map((datum) => {
         return {
-          score: item.score,
-          value: JSON.stringify({ player: item.player, score: item.score }),
+          score: datum.score,
+          value: `userid:${datum.id}`,
         };
       });
       await redisClient.zAdd("leaderboard", formattedData);
-      const expirationTime = 60 * 30; // NOTE: used 30 mins to limit my cache usage (using free plan)
-
-      await redisClient.expire("leaderboard", expirationTime);
-      const rank = await redisClient.zRevRank("leaderboard", member);
-
-      console.log("Rank: ", rank);
+      const rank = await redisClient.zRevRank(
+        "leaderboard",
+        `userid:${req.query.id}`
+      );
 
       if (typeof rank === "undefined" || rank === null) {
         return res.status(404).json({ error: "User not found" });
       }
+
       const data = {
         rank: rank,
         player: req.query.player,
         score: req.query.score,
       };
+
       return res.status(200).json({ data });
     }
   } catch (error) {
@@ -97,73 +171,3 @@ export async function getRank(req: Request, res: Response) {
     return res.status(500).json({ error });
   }
 }
-
-// NOTE: not being used atm
-export const getProximityUsers = async (req: Request, res: Response) => {
-  console.log("Getting proximity users for: ", req.query.player);
-  try {
-    const myRank = await redisClient.zRevRank(
-      "leaderboard",
-      req.query.player as string
-    );
-    if (myRank) {
-      console.log("Cache found");
-      const cache = await redisClient.zRangeWithScores(
-        "leaderboard",
-        myRank - 5,
-        myRank + 5,
-        {
-          REV: true,
-        }
-      );
-
-      const data = cache.map((item) => ({
-        player: item.value,
-        score: item.score,
-        myRank: myRank,
-      }));
-      return res.status(200).json({ data });
-    } else {
-      console.log("Cache missing");
-      const dbData = await db.select().from(leaderboard);
-      const formattedData = dbData.map((item) => {
-        return {
-          score: item.score,
-          value: item.player as string,
-        };
-      });
-      await redisClient.zAdd("leaderboard", formattedData);
-      const expirationTime = 60 * 30; // 30 mins to limit my cache usage (using free plan)
-
-      await redisClient.expire("leaderboard", expirationTime);
-      const myRank = await redisClient.zRevRank(
-        "leaderboard",
-        req.query.player as string
-      );
-
-      if (!myRank) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      const cache = await redisClient.zRangeWithScores(
-        "leaderboard",
-        myRank - 5,
-        myRank + 5,
-        {
-          REV: true,
-        }
-      );
-
-      const data = cache.map((item) => ({
-        player: item.value,
-        score: item.score,
-        myRank: myRank,
-      }));
-
-      return res.status(200).json({ data });
-    }
-  } catch (error) {
-    console.error("Failed to retrieve ranks:", error);
-    return res.status(500).json({ error });
-  }
-};
