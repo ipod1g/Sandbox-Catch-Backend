@@ -3,7 +3,7 @@ import { faker } from "@faker-js/faker";
 import * as schema from "../src/api/v1/schema";
 import db from "../src/db";
 
-const NUM_OF_GENERATED_ENTRIES = 10;
+const NUM_OF_GENERATED_ENTRIES = 100;
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is missing");
