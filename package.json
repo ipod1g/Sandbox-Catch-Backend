@@ -1,0 +1,32 @@
+{
+  "name": "sandbox-catch-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch -r dotenv/config src/index.ts",
+    "introspect": "drizzle-kit introspect:pg",
+    "generate": "drizzle-kit generate:pg",
+    "migrate": "tsx -r dotenv/config scripts/migrate.ts",
+    "seed": "tsx -r dotenv/config scripts/seed.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.7",
+    "express": "^4.19.2",
+    "postgres": "^3.4.4",
+    "redis": "^4.6.13"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^8.4.1",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.4",
+    "drizzle-kit": "^0.20.14",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.4"
+  }
+}
