@@ -1,10 +1,11 @@
 import db from "../../../db";
 import redisClient from "../../../redis";
 import { leaderboard } from "../schema";
+import type { Request, Response } from "express";
 
-export async function getLeaderBoard(req, res) {
+export async function getLeaderBoard(req: Request, res: Response) {
   console.log("Getting leaderboard data");
-  const range = req.query.range || 100;
+  const range = Number(req.query.range) || 100;
   try {
     const cache = await redisClient.zRangeWithScores("leaderboard", 0, range, {
       REV: true,
@@ -34,7 +35,7 @@ export async function getLeaderBoard(req, res) {
   }
 }
 
-export async function insertToLeaderboard(req, res) {
+export async function insertToLeaderboard(req: Request, res: Response) {
   console.log("Inserting new user", req.body);
   const payload = {
     player: req.body.player,
@@ -49,10 +50,13 @@ export async function insertToLeaderboard(req, res) {
   }
 }
 
-export async function getRank(req, res) {
+export async function getRank(req: Request, res: Response) {
   console.log("Getting user rank", req.body);
   try {
-    const rank = await redisClient.zRevRank("leaderboard", req.query.player);
+    const rank = await redisClient.zRevRank(
+      "leaderboard",
+      req.query.player as string
+    );
     if (rank) {
       const data = {
         rank: rank,
@@ -72,7 +76,10 @@ export async function getRank(req, res) {
       const expirationTime = 60 * 30; // NOTE: used 30 mins to limit my cache usage (using free plan)
 
       await redisClient.expire("leaderboard", expirationTime);
-      const rank = await redisClient.zRevRank("leaderboard", req.query.player);
+      const rank = await redisClient.zRevRank(
+        "leaderboard",
+        req.query.player as string
+      );
 
       if (!rank) {
         return res.status(404).json({ error: "User not found" });
@@ -91,10 +98,13 @@ export async function getRank(req, res) {
 }
 
 // NOTE: not being used atm
-export const getProximityUsers = async (req, res) => {
+export const getProximityUsers = async (req: Request, res: Response) => {
   console.log("Getting proximity users for: ", req.query.player);
   try {
-    const myRank = await redisClient.zRevRank("leaderboard", req.query.player);
+    const myRank = await redisClient.zRevRank(
+      "leaderboard",
+      req.query.player as string
+    );
     if (myRank) {
       console.log("Cache found");
       const cache = await redisClient.zRangeWithScores(
@@ -127,7 +137,7 @@ export const getProximityUsers = async (req, res) => {
       await redisClient.expire("leaderboard", expirationTime);
       const myRank = await redisClient.zRevRank(
         "leaderboard",
-        req.query.player
+        req.query.player as string
       );
 
       if (!myRank) {

@@ -1,6 +1,8 @@
-import express, { Errback } from "express";
+import express, { Errback, NextFunction, Request, Response } from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
+import helmet from "helmet";
+import RateLimit from "express-rate-limit";
 import v1 from "./api/v1";
 
 const app = express();
@@ -10,9 +12,25 @@ app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      "script-src": ["'self'", "code.jquery.com", "cdn.jsdelivr.net"],
+    },
+  })
+);
+
+// rate limiter: maximum of twenty requests per minute
+const limiter = RateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 20,
+});
+// To all requests
+app.use(limiter);
+
 app.use("/api/v1", v1);
 
-app.use((err, req, res, next) => {
+app.use((err: Errback, req: Request, res: Response, next: NextFunction) => {
   console.error("An error occurred:", err);
   res.status(500).json({ error: "Internal Server Error" });
 });
