@@ -12,6 +12,8 @@ export async function getLeaderBoard(
   const range = Number(req.query.range) - 1 || 99;
   try {
     if (!redisClient.isReady) {
+      console.log("Redis connection failed");
+
       const dbData = await db.query.leaderboard.findMany({
         orderBy: (user, { desc }) => [desc(user.score)],
         limit: range,
