@@ -52,14 +52,13 @@ export async function insertToLeaderboard(req: Request, res: Response) {
 
 export async function getRank(req: Request, res: Response) {
   console.log("Getting user rank", req.query.player as string);
+
   try {
-    if (!req.query.player) {
-      return res.status(400).json({ error: "Player name is required" });
+    if (!req.query.player || !req.query.score) {
+      return res.status(400).json({ error: "Player info required" });
     }
-    const rank = await redisClient.zRevRank(
-      "leaderboard",
-      req.query.player as string
-    );
+    const member = JSON.stringify(req.query);
+    const rank = await redisClient.zRevRank("leaderboard", member);
     if (typeof rank !== "undefined" && rank !== null) {
       const data = {
         rank: rank,
@@ -72,17 +71,14 @@ export async function getRank(req: Request, res: Response) {
       const formattedData = dbData.map((item) => {
         return {
           score: item.score,
-          value: item.player as string,
+          value: JSON.stringify({ player: item.player, score: item.score }),
         };
       });
       await redisClient.zAdd("leaderboard", formattedData);
       const expirationTime = 60 * 30; // NOTE: used 30 mins to limit my cache usage (using free plan)
 
       await redisClient.expire("leaderboard", expirationTime);
-      const rank = await redisClient.zRevRank(
-        "leaderboard",
-        req.query.player as string
-      );
+      const rank = await redisClient.zRevRank("leaderboard", member);
 
       console.log("Rank: ", rank);
 
