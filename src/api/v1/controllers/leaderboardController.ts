@@ -11,6 +11,32 @@ export async function getLeaderBoard(
   console.log("Getting leaderboard data");
   const range = Number(req.query.range) - 1 || 99;
   try {
+    if (!redisClient.isReady) {
+      const dbData = await db.query.leaderboard.findMany({
+        orderBy: (user, { desc }) => [desc(user.score)],
+        limit: range,
+        columns: {
+          id: true,
+          player: true,
+          score: true,
+        },
+      });
+
+      if (dbData && dbData.length > 0) {
+        const leaderboardArr = dbData.map((item, index) => ({
+          id: item.id,
+          rank: index + 1,
+          score: item.score,
+          player: item.player,
+        }));
+
+        return res.status(200).json({ data: leaderboardArr });
+      } else {
+        return res.status(404).json({ error: "No data found" });
+      }
+    }
+
+    // if connected to redis
     const sortedSet = await redisClient.zRangeWithScores(
       "leaderboard",
       0,
@@ -21,6 +47,7 @@ export async function getLeaderBoard(
     );
 
     if (sortedSet && sortedSet.length > 0) {
+      console.log("Cache hit");
       let leaderboardArr = new Array(sortedSet.length);
       let fetchedUserCount = 0;
 
@@ -28,6 +55,7 @@ export async function getLeaderBoard(
         const hashData = await redisClient.hmGet("users", sortedSet[i].value);
         if (hashData) {
           const details = {
+            id: sortedSet[i].value.split(":")[1],
             rank: i + 1,
             score: sortedSet[i].score,
             player: JSON.parse(hashData[0]).player,
@@ -67,6 +95,7 @@ export async function getLeaderBoard(
         await redisClient.expire("leaderboard", expirationTime);
 
         const leaderboardArr = dbData.map((item, index) => ({
+          id: item.id,
           rank: index + 1,
           score: item.score,
           player: item.player,
@@ -103,15 +132,18 @@ export async function insertToLeaderboard(req: Request, res: Response) {
   try {
     const data = await db.insert(leaderboard).values(payload).returning();
 
-    await redisClient.zAdd("leaderboard", {
-      score: data[0].score,
-      value: `userid:${data[0].id}`,
-    });
-    await redisClient.hSet(
-      "users",
-      `userid:${data[0].id}`,
-      JSON.stringify(data[0])
-    );
+    if (redisClient.isReady) {
+      await redisClient.zAdd("leaderboard", {
+        score: data[0].score,
+        value: `userid:${data[0].id}`,
+      });
+      await redisClient.hSet(
+        "users",
+        `userid:${data[0].id}`,
+        JSON.stringify(data[0])
+      );
+    }
+
     return res.status(200).json({ data });
   } catch (error) {
     console.error("Failed to insert data properly:", error);
@@ -122,6 +154,9 @@ export async function insertToLeaderboard(req: Request, res: Response) {
 export async function getRank(req: Request, res: Response) {
   if (!req.query.id)
     return res.status(400).json({ error: "Player id required" });
+  if (!redisClient.isReady) {
+    return res.status(500).json({ error: "Redis connection failed" });
+  }
 
   const { id } = req.query;
   console.log("Getting user rank:", id);
