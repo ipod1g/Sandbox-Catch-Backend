@@ -35,7 +35,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRank = exports.insertToLeaderboard = exports.getLeaderBoard = void 0;
+exports.getPlayer = exports.insertToLeaderboard = exports.getLeaderBoard = void 0;
 const db_1 = __importDefault(require("../../../db"));
 const redis_1 = __importStar(require("../../../redis"));
 const schema_1 = require("../schema");
@@ -44,95 +44,26 @@ function getLeaderBoard(req, res, next) {
         console.log("Getting leaderboard data");
         const range = Number(req.query.range) - 1 || 99;
         try {
-            if (!redis_1.default.isReady) {
-                console.log("Redis connection failed");
-                const dbData = yield db_1.default.query.leaderboard.findMany({
-                    orderBy: (user, { desc }) => [desc(user.score)],
-                    limit: range,
-                    columns: {
-                        id: true,
-                        player: true,
-                        score: true,
-                    },
-                });
-                if (dbData && dbData.length > 0) {
-                    const leaderboardArr = dbData.map((item, index) => ({
-                        id: item.id,
-                        rank: index + 1,
-                        score: item.score,
-                        player: item.player,
-                    }));
-                    return res.status(200).json({ data: leaderboardArr });
-                }
-                else {
-                    return res.status(404).json({ error: "No data found" });
-                }
-            }
-            // if connected to redis
-            const sortedSet = yield redis_1.default.zRangeWithScores("leaderboard", 0, range, {
-                REV: true,
+            const dbData = yield db_1.default.query.leaderboard.findMany({
+                orderBy: (user, { desc }) => [desc(user.score), desc(user.createdTime)],
+                limit: range,
+                columns: {
+                    id: true,
+                    player: true,
+                    score: true,
+                },
             });
-            if (sortedSet && sortedSet.length > 0) {
-                console.log("Cache hit");
-                let leaderboardArr = new Array(sortedSet.length);
-                let fetchedUserCount = 0;
-                for (let i = 0; i < sortedSet.length; i++) {
-                    const hashData = yield redis_1.default.hmGet("users", sortedSet[i].value);
-                    if (hashData) {
-                        const details = {
-                            id: sortedSet[i].value.split(":")[1],
-                            rank: i + 1,
-                            score: sortedSet[i].score,
-                            player: JSON.parse(hashData[0]).player,
-                            country: JSON.parse(hashData[0]).country,
-                        };
-                        leaderboardArr[i] = details;
-                        fetchedUserCount++;
-                        if (fetchedUserCount == sortedSet.length) {
-                            return res.status(200).json({ data: leaderboardArr });
-                        }
-                    }
-                    else {
-                        next(new Error("Failed to retrieve data"));
-                    }
-                }
+            if (dbData && dbData.length > 0) {
+                const leaderboardArr = dbData.map((item, index) => ({
+                    id: item.id,
+                    rank: index + 1,
+                    score: item.score,
+                    player: item.player,
+                }));
+                return res.status(200).json({ data: leaderboardArr });
             }
             else {
-                const dbData = yield db_1.default.query.leaderboard.findMany({
-                    orderBy: (user, { desc }) => [desc(user.score)],
-                    limit: range,
-                    columns: {
-                        id: true,
-                        player: true,
-                        score: true,
-                    },
-                });
-                // update sortedSet
-                if (dbData && dbData.length > 0) {
-                    const formattedData = dbData.map((item) => {
-                        return {
-                            score: item.score,
-                            value: `userid:${item.id}`,
-                        };
-                    });
-                    yield redis_1.default.zAdd("leaderboard", formattedData);
-                    yield redis_1.default.expire("leaderboard", redis_1.expirationTime);
-                    const leaderboardArr = dbData.map((item, index) => ({
-                        id: item.id,
-                        rank: index + 1,
-                        score: item.score,
-                        player: item.player,
-                    }));
-                    // update hash table
-                    dbData.forEach((datum) => __awaiter(this, void 0, void 0, function* () {
-                        yield redis_1.default.hSet("users", `userid:${datum.id}`, JSON.stringify(datum));
-                        yield redis_1.default.expire("users", redis_1.expirationTime);
-                    }));
-                    return res.status(200).json({ data: leaderboardArr });
-                }
-                else {
-                    return res.status(404).json({ error: "No data found" });
-                }
+                return res.status(404).json({ error: "No data found" });
             }
         }
         catch (error) {
@@ -149,6 +80,11 @@ function insertToLeaderboard(req, res) {
             player: req.body.player,
             score: req.body.score,
         };
+        if (typeof payload.score !== "number") {
+            return res
+                .status(400)
+                .json({ error: "Invalid score. Score must be a number." });
+        }
         try {
             const data = yield db_1.default.insert(schema_1.leaderboard).values(payload).returning();
             if (redis_1.default.isReady) {
@@ -156,38 +92,33 @@ function insertToLeaderboard(req, res) {
                     score: data[0].score,
                     value: `userid:${data[0].id}`,
                 });
-                yield redis_1.default.hSet("users", `userid:${data[0].id}`, JSON.stringify(data[0]));
             }
-            return res.status(200).json({ data });
+            return res.status(201).json({ data });
         }
         catch (error) {
             console.error("Failed to insert data properly:", error);
-            return res.status(500).json({ error });
+            return res.status(500).json("Internal Server Error");
         }
     });
 }
 exports.insertToLeaderboard = insertToLeaderboard;
-function getRank(req, res) {
+function getPlayer(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        if (!req.query.id)
+        if (!req.params.id)
             return res.status(400).json({ error: "Player id required" });
-        if (!redis_1.default.isReady) {
-            return res.status(500).json({ error: "Redis connection failed" });
-        }
-        const { id } = req.query;
+        const { id } = req.params;
         console.log("Getting user rank:", id);
         try {
-            const rank = yield redis_1.default.zRevRank("leaderboard", `userid:${req.query.id}`);
-            if (typeof rank !== "undefined" && rank !== null) {
-                // no need to visit hash table
+            const rank = yield redis_1.default.zRevRank("leaderboard", `userid:${id}`);
+            if (rank !== null) {
+                console.debug("Cache hit");
                 const data = {
                     rank: rank + 1,
-                    player: req.query.player,
-                    score: req.query.score,
                 };
                 return res.status(200).json({ data });
             }
             else {
+                console.debug("Cache Miss");
                 // query without limit since we need to find the rank of the user (can be +100)
                 const dbData = yield db_1.default.select().from(schema_1.leaderboard);
                 const formattedData = dbData.map((datum) => {
@@ -196,15 +127,15 @@ function getRank(req, res) {
                         value: `userid:${datum.id}`,
                     };
                 });
+                // Heavy operation that happens if cache expires
                 yield redis_1.default.zAdd("leaderboard", formattedData);
-                const rank = yield redis_1.default.zRevRank("leaderboard", `userid:${req.query.id}`);
-                if (typeof rank === "undefined" || rank === null) {
+                yield redis_1.default.expire("leaderboard", redis_1.expirationTime);
+                const rank = yield redis_1.default.zRevRank("leaderboard", `userid:${id}`);
+                if (rank === null) {
                     return res.status(404).json({ error: "User not found" });
                 }
                 const data = {
-                    rank: rank,
-                    player: req.query.player,
-                    score: req.query.score,
+                    rank: rank + 1,
                 };
                 return res.status(200).json({ data });
             }
@@ -215,5 +146,5 @@ function getRank(req, res) {
         }
     });
 }
-exports.getRank = getRank;
+exports.getPlayer = getPlayer;
 //# sourceMappingURL=leaderboardController.js.map
