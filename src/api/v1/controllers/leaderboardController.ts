@@ -9,7 +9,7 @@ export async function getLeaderBoard(
   next: NextFunction
 ) {
   console.log("Getting leaderboard data");
-  const range = Number(req.query.range) - 1 || 99;
+  const range = Number(req.query.range) || 100;
   try {
     const dbData = await db.query.leaderboard.findMany({
       orderBy: (user, { desc }) => [desc(user.score), desc(user.createdTime)],
