@@ -31,7 +31,7 @@ export async function getLeaderBoard(
 
       return res.status(200).json({ data: leaderboardArr });
     } else {
-      return res.status(404).json({ error: "No data found" });
+      return res.status(404).json({ error: "No data found." });
     }
   } catch (error) {
     console.error("Failed to retrieve data:", error);
@@ -65,14 +65,15 @@ export async function insertToLeaderboard(req: Request, res: Response) {
     return res.status(201).json({ data });
   } catch (error) {
     console.error("Failed to insert data properly:", error);
-    return res.status(500).json("Internal Server Error");
+    return res.status(500).json("Internal Server Error.");
   }
 }
 
 export async function getPlayer(req: Request, res: Response) {
-  if (!req.params.id)
-    return res.status(400).json({ error: "Player id required" });
-  const { id } = req.params;
+  const id = req.params.id;
+
+  if (!id) return res.status(400).json({ error: "Player ID required." });
+
   console.log("Getting user rank:", id);
 
   try {
@@ -100,7 +101,9 @@ export async function getPlayer(req: Request, res: Response) {
       const rank = await redisClient.zRevRank("leaderboard", `userid:${id}`);
 
       if (rank === null) {
-        return res.status(404).json({ error: "User not found" });
+        return res
+          .status(404)
+          .json({ error: `Player with ID '${id}' not found.` });
       }
 
       const data = {
@@ -111,6 +114,6 @@ export async function getPlayer(req: Request, res: Response) {
     }
   } catch (error) {
     console.error("Failed to retrieve ranks:", error);
-    return res.status(500).json({ error });
+    return res.status(500).json("Internal Server Error.");
   }
 }
