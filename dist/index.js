@@ -11,7 +11,11 @@ const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const v1_1 = __importDefault(require("./api/v1"));
 const app = (0, express_1.default)();
 const port = process.env.PORT || "8000";
-app.use((0, cors_1.default)());
+app.use((0, cors_1.default)({
+    origin: "*",
+    methods: ["GET", "POST", "PUT"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use(body_parser_1.default.urlencoded({ extended: false }));
 app.use(body_parser_1.default.json());
 app.use(helmet_1.default.contentSecurityPolicy({
@@ -22,7 +26,8 @@ app.use(helmet_1.default.contentSecurityPolicy({
 // rate limiter: maximum of twenty requests per minute
 const limiter = (0, express_rate_limit_1.default)({
     windowMs: 1 * 60 * 1000, // 1 minute
-    max: 20,
+    max: 100,
+    validate: { xForwardedForHeader: false, trustProxy: true },
 });
 // To all requests
 app.use(limiter);
