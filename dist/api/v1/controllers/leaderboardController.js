@@ -42,7 +42,7 @@ const schema_1 = require("../schema");
 function getLeaderBoard(req, res, next) {
     return __awaiter(this, void 0, void 0, function* () {
         console.log("Getting leaderboard data");
-        const range = Number(req.query.range) - 1 || 99;
+        const range = Number(req.query.range) || 100;
         try {
             const dbData = yield db_1.default.query.leaderboard.findMany({
                 orderBy: (user, { desc }) => [desc(user.score), desc(user.createdTime)],
