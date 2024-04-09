@@ -9,6 +9,8 @@ const leaderboardRoutes = (0, express_1.Router)();
  * @tags Leaderboard
  * @param {number} range.query.optional - The range of leaderboard entries to retrieve
  * @return {array} 200 - An array of leaderboard entries
+ * @return {object} 404 - Player not found response - application/json
+ * @return {object} 500 - Unexpected error response - application/json
  * @example response - 200 - Success response example
  * [
  *   {
@@ -20,6 +22,14 @@ const leaderboardRoutes = (0, express_1.Router)();
  *     "score": 90
  *   }
  * ]
+ * @example response - 404 - Not found response example
+ * {
+ *   "error": "Player with ID '123' not found."
+ * }
+ * @example response - 500 - Unexpected error response example
+ * {
+ *   "error": "Internal Server Error."
+ * }
  */
 /**
  * POST /api/v1/leaderboard
@@ -57,14 +67,19 @@ leaderboardRoutes.get("/", leaderboardController_1.getLeaderBoard).post("/", lea
  * @param {string} id.path.required - The ID of the player
  * @return {object} 200 - Success response - application/json
  * @return {object} 404 - Player not found response - application/json
+ * @return {object} 400 - Bad request response - application/json
  * @return {object} 500 - Unexpected error response - application/json
  * @example response - 200 - Success response example
  * {
  *   "rank": 1,
  * }
- * @example response - 404 - Player not found response example
+ * @example response - 404 - Not found response example
  * {
  *   "error": "Player with ID '123' not found."
+ * }
+ * @example response - 400 - Bad request response example
+ * {
+ *   "error": "Player ID required"
  * }
  * @example response - 500 - Unexpected error response example
  * {

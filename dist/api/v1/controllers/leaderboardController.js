@@ -63,7 +63,7 @@ function getLeaderBoard(req, res, next) {
                 return res.status(200).json({ data: leaderboardArr });
             }
             else {
-                return res.status(404).json({ error: "No data found" });
+                return res.status(404).json({ error: "No data found." });
             }
         }
         catch (error) {
@@ -97,16 +97,16 @@ function insertToLeaderboard(req, res) {
         }
         catch (error) {
             console.error("Failed to insert data properly:", error);
-            return res.status(500).json("Internal Server Error");
+            return res.status(500).json("Internal Server Error.");
         }
     });
 }
 exports.insertToLeaderboard = insertToLeaderboard;
 function getPlayer(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        if (!req.params.id)
-            return res.status(400).json({ error: "Player id required" });
-        const { id } = req.params;
+        const id = req.params.id;
+        if (!id)
+            return res.status(400).json({ error: "Player ID required." });
         console.log("Getting user rank:", id);
         try {
             const rank = yield redis_1.default.zRevRank("leaderboard", `userid:${id}`);
@@ -132,7 +132,9 @@ function getPlayer(req, res) {
                 yield redis_1.default.expire("leaderboard", redis_1.expirationTime);
                 const rank = yield redis_1.default.zRevRank("leaderboard", `userid:${id}`);
                 if (rank === null) {
-                    return res.status(404).json({ error: "User not found" });
+                    return res
+                        .status(404)
+                        .json({ error: `Player with ID '${id}' not found.` });
                 }
                 const data = {
                     rank: rank + 1,
@@ -142,7 +144,7 @@ function getPlayer(req, res) {
         }
         catch (error) {
             console.error("Failed to retrieve ranks:", error);
-            return res.status(500).json({ error });
+            return res.status(500).json("Internal Server Error.");
         }
     });
 }
