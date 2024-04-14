@@ -11,27 +11,50 @@ export async function getLeaderBoard(
   console.log("Getting leaderboard data");
   const range = Number(req.query.range) || 100;
   try {
-    const dbData = await db.query.leaderboard.findMany({
-      orderBy: (user, { desc }) => [desc(user.score), desc(user.createdTime)],
-      limit: range,
-      columns: {
-        id: true,
-        player: true,
-        score: true,
-      },
-    });
+    const cache = await redisClient.zRangeWithScores(
+      "leaderboard",
+      0,
+      range - 1
+    );
+    if (!cache) {
+      console.debug("Cache hit");
 
-    if (dbData && dbData.length > 0) {
-      const leaderboardArr = dbData.map((item, index) => ({
-        id: item.id,
+      const hashData = await redisClient.hGetAll("player_details");
+
+      const parsedHash = Object.entries(hashData).map(([key, value]) => {
+        const parsedValue = JSON.parse(value);
+        return parsedValue;
+      });
+
+      const leaderboardArr = parsedHash.map((item, index) => ({
         rank: index + 1,
-        score: item.score,
-        player: item.player,
+        ...item,
       }));
 
       return res.status(200).json({ data: leaderboardArr });
     } else {
-      return res.status(404).json({ error: "No data found." });
+      const dbData = await db.query.leaderboard.findMany({
+        orderBy: (user, { desc }) => [desc(user.score), desc(user.createdTime)],
+        limit: range,
+        columns: {
+          id: true,
+          player: true,
+          score: true,
+        },
+      });
+
+      if (dbData && dbData.length > 0) {
+        const leaderboardArr = dbData.map((item, index) => ({
+          id: item.id,
+          rank: index + 1,
+          score: item.score,
+          player: item.player,
+        }));
+
+        return res.status(200).json({ data: leaderboardArr });
+      } else {
+        return res.status(404).json({ error: "No data found." });
+      }
     }
   } catch (error) {
     console.error("Failed to retrieve data:", error);
@@ -60,6 +83,11 @@ export async function insertToLeaderboard(req: Request, res: Response) {
         score: data[0].score,
         value: `userid:${data[0].id}`,
       });
+      await redisClient.hSet(
+        `player_details`,
+        `userid:${data[0].id}`,
+        JSON.stringify(data[0])
+      );
     }
 
     return res.status(201).json({ data });
@@ -98,6 +126,23 @@ export async function getPlayer(req: Request, res: Response) {
       // Heavy operation that happens if cache expires
       await redisClient.zAdd("leaderboard", formattedData);
       await redisClient.expire("leaderboard", expirationTime);
+      // limited by max request byte size
+      await redisClient.hSet(
+        "player_details",
+        formattedData.flatMap((item) => [
+          item.value,
+          JSON.stringify(
+            dbData.map((datum) => {
+              return {
+                id: datum.id,
+                player: datum.player,
+                score: datum.score,
+              };
+            })
+          ),
+        ])
+      );
+
       const rank = await redisClient.zRevRank("leaderboard", `userid:${id}`);
 
       if (rank === null) {
