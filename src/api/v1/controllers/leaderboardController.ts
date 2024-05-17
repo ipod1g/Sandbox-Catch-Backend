@@ -52,21 +52,21 @@ export async function insertToLeaderboard(req: Request, res: Response) {
       .json({ error: "Invalid score. Score must be a number." });
   }
 
-  try {
-    const data = await db.insert(leaderboard).values(payload).returning();
-
-    if (redisClient.isReady) {
+  db.transaction(async (trx) => {
+    try {
+      const data = await trx.insert(leaderboard).values(payload).returning();
+      // If cache append fails, it will rollback the db append too
       await redisClient.zAdd("leaderboard", {
         score: data[0].score,
         value: `userid:${data[0].id}`,
       });
+      return res.status(201).json({ data });
+    } catch (error) {
+      trx.rollback();
+      console.error("Failed to insert data properly:", error);
+      return res.status(500).json("Internal Server Error.");
     }
-
-    return res.status(201).json({ data });
-  } catch (error) {
-    console.error("Failed to insert data properly:", error);
-    return res.status(500).json("Internal Server Error.");
-  }
+  });
 }
 
 export async function getPlayer(req: Request, res: Response) {
@@ -95,9 +95,9 @@ export async function getPlayer(req: Request, res: Response) {
           value: `userid:${datum.id}`,
         };
       });
-      // Heavy operation that happens if cache expires
+      // Heavy operation that happens if cache miss - (maybe consider Pareto's Law?)
       await redisClient.zAdd("leaderboard", formattedData);
-      await redisClient.expire("leaderboard", expirationTime);
+      // await redisClient.expire("leaderboard", expirationTime);
       const rank = await redisClient.zRevRank("leaderboard", `userid:${id}`);
 
       if (rank === null) {
