@@ -12,7 +12,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPlayer = exports.insertToLeaderboard = exports.getLeaderBoard = void 0;
+exports.getLeaderBoard = getLeaderBoard;
+exports.insertToLeaderboard = insertToLeaderboard;
+exports.getPlayer = getPlayer;
 const db_1 = __importDefault(require("../../../db"));
 const redis_1 = __importDefault(require("../../../redis"));
 const schema_1 = require("../schema");
@@ -49,7 +51,6 @@ function getLeaderBoard(req, res, next) {
         }
     });
 }
-exports.getLeaderBoard = getLeaderBoard;
 function insertToLeaderboard(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         console.log("Inserting new user", req.body);
@@ -80,7 +81,6 @@ function insertToLeaderboard(req, res) {
         }));
     });
 }
-exports.insertToLeaderboard = insertToLeaderboard;
 function getPlayer(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         const id = req.params.id;
@@ -127,5 +127,4 @@ function getPlayer(req, res) {
         }
     });
 }
-exports.getPlayer = getPlayer;
 //# sourceMappingURL=leaderboardController.js.map
